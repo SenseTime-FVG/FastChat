@@ -62,12 +62,47 @@ from fastchat.protocol.api_protocol import (
     APITokenCheckResponseItem,
 )
 from fastchat.utils import build_logger
+import base64
 
 logger = build_logger("openai_api_server", "openai_api_server.log")
 
 conv_template_map = {}
 
 fetch_timeout = aiohttp.ClientTimeout(total=3 * 3600)
+
+
+import numpy as np
+import cv2
+def get_middle_idxs(num_frames):
+    idxs = np.arange(num_frames)
+    middle_idxs = []
+    chunk_size = len(idxs) // 3 + 1
+    for i in range(0, len(idxs), chunk_size):
+        middle_idx = i + chunk_size // 2
+        middle_idx = min(middle_idx, len(idxs) - 1)
+        middle_idxs.append(middle_idx)
+    assert len(middle_idxs) <= 3
+    return middle_idxs
+
+def extract_frames(video_path, frame_idxs):
+    frames = []
+    cap = cv2.VideoCapture(video_path)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    for idx in frame_idxs:
+        if idx < total_frames:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if ret:
+                frames.append(frame)
+    cap.release()
+    return frames
+
+def frame_to_base64(frame):
+    """Convert a single frame to a Base64-encoded string."""
+    _, buffer = cv2.imencode('.jpg', frame)
+    base64_str = base64.b64encode(buffer).decode('utf-8')
+    return base64_str
 
 
 async def fetch_remote(url, pload=None, name=None):
@@ -278,6 +313,7 @@ async def get_gen_params(
     stop: Optional[Union[str, List[str]]],
     best_of: Optional[int] = None,
     use_beam_search: Optional[bool] = None,
+    special_token: Optional[dict] = None,
 ) -> Dict[str, Any]:
     
     conv = await get_conv(model_name, worker_addr)
@@ -294,6 +330,7 @@ async def get_gen_params(
         stop_str=conv["stop_str"],
         stop_token_ids=conv["stop_token_ids"],
     )
+    
     if isinstance(messages, str):
         prompt = messages
         images = []
@@ -314,12 +351,33 @@ async def get_gen_params(
                         for item in message["content"]
                         if item["type"] == "text"
                     ]
+                    video_list = [
+                        item["video_url"]["url"]
+                        for item in message["content"]
+                        if item["type"] == "video_url"
+                    ]
                     # TODO audio、video
                     # TODO： 拼special token
                     # TODO(chris): This only applies to LLaVA model. Implement an image_token string in the conv template.
-                    text = "<|img_start|><|img_end|>\n" * len(image_list) # TODO <|img|><|img_end|>
-                    text += "\n".join(text_list)
-                    conv.append_message(conv.roles[0], (text, image_list))
+                    if video_list:
+                        full_text = ""
+                        base64_frames = []
+                        for video_url in video_list:
+                            frame_idxs = get_middle_idxs(10)
+                            frames = extract_frames(video_url, frame_idxs)
+                            frame_descriptions = []
+                            for idx, frame in enumerate(frames):
+                                base64_frame = frame_to_base64(frame)
+                                base64_frames.append(base64_frame)
+                                frame_placeholder = f"Frame{idx + 1}: {special_token['video']}"
+                                frame_descriptions.append(frame_placeholder)
+                            full_text += "".join(frame_descriptions)
+                        full_text += "".join(text_list)
+                        conv.append_message(conv.roles[0], (full_text, base64_frames))
+                    else:
+                        text = special_token['img'] * len(image_list)
+                        text += "\n".join(text_list)
+                        conv.append_message(conv.roles[0], (text, image_list))
                 else:
                     conv.append_message(conv.roles[0], message["content"])
             elif msg_role == "assistant":
@@ -383,7 +441,10 @@ async def get_worker_address(model_name: str) -> str:
     logger.debug(f"model_name: {model_name}, worker_addr: {worker_addr}")
     return worker_addr
 
-
+async def get_worker_details(model_name: str) -> Dict[str, Any]:
+    worker_addr = await get_worker_address(model_name)
+    detail = await fetch_remote(worker_addr + "/worker_details", {"model": model_name})
+    return detail
 
 async def get_conv(model_name: str, worker_addr: str):
     conv_template = conv_template_map.get((worker_addr, model_name))
@@ -420,7 +481,8 @@ async def create_chat_completion(request: ChatCompletionRequest):
         return error_check_ret
 
     worker_addr = await get_worker_address(request.model)
-    
+    details = await get_worker_details(request.model)
+    special_token = json.loads(details)['special_token']
     gen_params = await get_gen_params(
         request.model,
         worker_addr,
@@ -433,19 +495,21 @@ async def create_chat_completion(request: ChatCompletionRequest):
         max_tokens=request.max_tokens,
         echo=False,
         stop=request.stop,
+        special_token=special_token,
+
     )
 
-    max_new_tokens, error_check_ret = await check_length(
-        request,
-        gen_params["prompt"],
-        gen_params["max_new_tokens"],
-        worker_addr,
-    )
+    # max_new_tokens, error_check_ret = await check_length(
+    #     request,
+    #     gen_params["prompt"],
+    #     gen_params["max_new_tokens"],
+    #     worker_addr,
+    # )
 
-    if error_check_ret is not None:
-        return error_check_ret
+    # if error_check_ret is not None:
+    #     return error_check_ret
 
-    gen_params["max_new_tokens"] = max_new_tokens
+    # gen_params["max_new_tokens"] = max_new_tokens
 
     if request.stream:
         generator = chat_completion_stream_generator(
