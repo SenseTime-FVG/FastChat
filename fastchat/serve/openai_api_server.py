@@ -315,9 +315,10 @@ async def get_gen_params(
                         for item in message["content"]
                         if item["type"] == "text"
                     ]
-
+                    # TODO audio、video
+                    # TODO： 拼special token
                     # TODO(chris): This only applies to LLaVA model. Implement an image_token string in the conv template.
-                    text = "<image>\n" * len(image_list)
+                    text = "<|img_start|><|img_end|>\n" * len(image_list) # TODO <|img|><|img_end|>
                     text += "\n".join(text_list)
                     conv.append_message(conv.roles[0], (text, image_list))
                 else:

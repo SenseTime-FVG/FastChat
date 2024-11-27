@@ -260,8 +260,8 @@ async def api_model_details(request: Request):
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--host", type=str, default="localhost")
+    parser.add_argument("--port", type=int, default=21390)
 
     parser.add_argument(
         "--model-path",
@@ -270,7 +270,7 @@ if __name__ == "__main__":
         default=None,
         help="the model weight dir path, the app will load config, weights and tokenizer from this dir",
     )
-    parser.add_argument("--worker-address", type=str, default="http://localhost:21002")
+    parser.add_argument("--worker-address", type=str, default="http://localhost:21390")
     parser.add_argument(
         "--controller-address", type=str, default="http://localhost:21001"
     )
