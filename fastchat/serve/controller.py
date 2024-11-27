@@ -103,7 +103,7 @@ class Controller:
 
     def get_worker_status(self, worker_name: str):
         try:
-            r = requests.post(worker_name + "/worker_get_status", timeout=5)
+            r = requests.post(worker_name + "/worker_get_status", timeout=20)
         except requests.exceptions.RequestException as e:
             logger.error(f"Get status fails: {worker_name}, {e}")
             return None

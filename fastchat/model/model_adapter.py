@@ -36,6 +36,7 @@ from fastchat.model.model_yuan2 import generate_stream_yuan2
 from fastchat.model.model_exllama import generate_stream_exllama
 from fastchat.model.model_xfastertransformer import generate_stream_xft
 from fastchat.model.model_cllm import generate_stream_cllm
+from fastchat.model.model_internvl import generate_stream_internvl
 
 from fastchat.model.monkey_patch_non_inplace import (
     replace_llama_attn_with_non_inplace_operations,
@@ -414,8 +415,11 @@ def get_generate_stream_function(model: torch.nn.Module, model_path: str):
     is_xft = "xft" in model_type
     is_yuan = "yuan" in model_type
     is_cllm = "consistency-llm" in model_path.lower()
+    is_internvl = "qw" in model_path.lower() ### todo
 
-    if is_chatglm:
+    if is_internvl:
+        return generate_stream_internvl
+    elif is_chatglm:
         return generate_stream_chatglm
     elif is_falcon:
         return generate_stream_falcon

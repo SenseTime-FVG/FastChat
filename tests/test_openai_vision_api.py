@@ -10,7 +10,7 @@ import openai
 from fastchat.utils import run_cmd
 
 openai.api_key = "EMPTY"  # Not support yet
-openai.base_url = "http://localhost:8000/v1/"
+openai.base_url = "http://localhost:21001/v1/"
 
 
 def encode_image(image):
@@ -40,7 +40,7 @@ def test_list_models():
 
 
 def test_chat_completion(model):
-    image_url = "https://picsum.photos/seed/picsum/1024/1024"
+    image_url = "/mnt/afs/user/zhengzhimeng/11529.jpg"
     base64_image_url = f"data:image/jpeg;base64,{encode_image(image_url)}"
 
     # No Image
@@ -60,21 +60,21 @@ def test_chat_completion(model):
     print("=" * 25)
 
     # Image using url link
-    completion = openai.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "What’s in this image?"},
-                    {"type": "image_url", "image_url": {"url": image_url}},
-                ],
-            }
-        ],
-        temperature=0,
-    )
-    print(completion.choices[0].message.content)
-    print("=" * 25)
+    # completion = openai.chat.completions.create(
+    #     model=model,
+    #     messages=[
+    #         {
+    #             "role": "user",
+    #             "content": [
+    #                 {"type": "text", "text": "What’s in this image?"},
+    #                 {"type": "image_url", "image_url": {"url": image_url}},
+    #             ],
+    #         }
+    #     ],
+    #     temperature=0,
+    # )
+    # print(completion.choices[0].message.content)
+    # print("=" * 25)
 
     # Image using base64 image url
     completion = openai.chat.completions.create(
@@ -95,7 +95,7 @@ def test_chat_completion(model):
 
 
 def test_chat_completion_stream(model):
-    image_url = "https://picsum.photos/seed/picsum/1024/1024"
+    image_url = "/mnt/afs/user/zhengzhimeng/11529.jpg"
 
     messages = [
         {
@@ -122,7 +122,7 @@ def test_chat_completion_stream(model):
 
 def test_openai_curl():
     run_cmd(
-        """curl http://localhost:8000/v1/chat/completions \
+        """curl http://localhost:210390/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llava-v1.5-7b",
@@ -137,7 +137,7 @@ def test_openai_curl():
           {
             "type": "image_url",
             "image_url": {
-              "url": "https://picsum.photos/seed/picsum/1024/1024"
+              "url": "/mnt/afs/user/zhengzhimeng/11529.jpg"
             }
           }
         ]

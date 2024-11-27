@@ -11,7 +11,7 @@ from fastchat.utils import run_cmd
 
 
 openai.api_key = "EMPTY"  # Not support yet
-openai.base_url = "http://localhost:8000/v1/"
+openai.base_url = "http://localhost:21390/v1/"
 
 
 def test_list_models():

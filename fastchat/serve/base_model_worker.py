@@ -34,7 +34,7 @@ class BaseModelWorker:
         model_names: List[str],
         limit_worker_concurrency: int,
         conv_template: str = None,
-        multimodal: bool = False,
+        multimodal: bool = True,
     ):
         global logger, worker
 
@@ -225,17 +225,17 @@ async def api_get_status(request: Request):
     return worker.get_status()
 
 
-@app.post("/count_token")
+@app.post("/count_token") # TODO 实现count token
 async def api_count_token(request: Request):
     params = await request.json()
     return worker.count_token(params)
 
 
-@app.post("/worker_get_conv_template")
+@app.post("/worker_get_conv_template") # TODO
 async def api_get_conv(request: Request):
     return worker.get_conv_template()
 
 
-@app.post("/model_details")
+@app.post("/model_details") #TODO
 async def api_model_details(request: Request):
     return {"context_length": worker.context_len}

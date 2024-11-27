@@ -165,7 +165,7 @@ async def check_length(request, prompt, max_tokens, worker_addr):
         worker_addr + "/count_token",
         {"model": request.model, "prompt": prompt},
         "count",
-    )
+    ) # TODO: 1. text -> tokenizer -< token num, 2. image -> 切分策略 -> 单patch的token -> token num
     length = min(max_tokens, context_len - token_num)
 
     if length <= 0:
@@ -822,6 +822,7 @@ async def create_chat_completion(request: APIChatCompletionRequest):
         max_tokens=request.max_tokens,
         echo=False,
         stop=request.stop,
+        # TODO: 参数需要扩展
     )
 
     if request.repetition_penalty is not None:

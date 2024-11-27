@@ -39,6 +39,7 @@ class SeparatorStyle(IntEnum):
     GEMMA = auto()
     CLLM = auto()
     DEFAULT = auto()
+    MPT = auto()
 
 
 IMAGE_PLACEHOLDER_STR = "$$<image>$$"
@@ -324,6 +325,19 @@ class Conversation:
                 else:
                     ret += role + ":"
             return ret
+        elif self.sep_style == SeparatorStyle.MPT:
+            if self.system_message:
+                ret = system_prompt + self.sep
+            else:
+                ret = ""
+            for role, message in self.messages:
+                if message:
+                    if type(message) is tuple:
+                        message, _ = message
+                    ret += role + message + self.sep
+                else:
+                    ret += role
+            return ret
         else:
             raise ValueError(f"Invalid style: {self.sep_style}")
 
@@ -333,7 +347,7 @@ class Conversation:
             if i % 2 == 0:
                 if type(msg) is tuple:
                     for image in msg[1]:
-                        images.append(image.base64_str)
+                        images.append(image)
 
         return images
 
@@ -720,6 +734,52 @@ register_conv_template(
         sep="",
     )
 )
+
+register_conv_template(
+    Conversation(
+        name="internlm2-chat",
+        system_template="<|im_start|>system\n{system_message}",
+        system_message="You are an AI assistant whose name is SenseChat-Vision(日日新多模态).",
+        roles=("<|im_start|>user\n", "<|im_start|>assistant\n"),
+        sep_style=SeparatorStyle.MPT,
+        sep="<|im_end|>",
+        stop_token_ids=[2, 92543, 92542],
+    )
+)
+
+
+register_conv_template(
+    Conversation(
+        name="internlm2-chat-v2",
+        system_template="<|im_start|>system\n{system_message}",
+        system_message="你是商汤科技开发的日日新多模态大模型，英文名叫SenseChat，是一个有用无害的人工智能助手。",
+        roles=(
+            "<|im_start|>user\n",
+            "<|im_start|>assistant\n",
+            "<|im_start|>knowledge\n",
+        ),
+        sep_style=SeparatorStyle.MPT,
+        sep="<|im_end|>\n",
+        stop_token_ids=[2, 92543, 92542],
+    )
+)
+
+register_conv_template(
+    Conversation(
+        name="internlm2-chat-v3",
+        system_template="<|im_start|>system\n{system_message}",
+        system_message="",
+        roles=(
+            "<|im_start|>user\n",
+            "<|im_start|>assistant\n",
+            "<|im_start|>knowledge\n",
+        ),
+        sep_style=SeparatorStyle.MPT,
+        sep="<|im_end|>\n",
+        stop_token_ids=[2, 92543, 92542],
+    )
+)
+
 
 # A template with a one-shot conversation example
 register_conv_template(
@@ -1660,20 +1720,6 @@ register_conv_template(
         sep_style=SeparatorStyle.ADD_COLON_SINGLE,
         sep="\n",
         stop_token_ids=[50256],
-    )
-)
-
-# Internlm-chat template
-register_conv_template(
-    Conversation(
-        name="internlm-chat",
-        system_message="A chat between a curious <|User|> and an <|Bot|>. The <|Bot|> gives helpful, detailed, and polite answers to the <|User|>'s questions.\n\n",
-        roles=("<|User|>", "<|Bot|>"),
-        sep_style=SeparatorStyle.CHATINTERN,
-        sep="<eoh>",
-        sep2="<eoa>",
-        stop_token_ids=[1, 103028],
-        stop_str="<|User|>",
     )
 )
 

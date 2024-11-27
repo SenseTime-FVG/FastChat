@@ -62,6 +62,7 @@ class APIChatCompletionRequest(BaseModel):
     repetition_penalty: Optional[float] = 1.0
     frequency_penalty: Optional[float] = 0.0
     presence_penalty: Optional[float] = 0.0
+    # TODO request参数
 
 
 class ChatMessage(BaseModel):

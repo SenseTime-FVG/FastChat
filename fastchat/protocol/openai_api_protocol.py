@@ -62,16 +62,17 @@ class ChatCompletionRequest(BaseModel):
         List[Dict[str, str]],
         List[Dict[str, Union[str, List[Dict[str, Union[str, Dict[str, str]]]]]]],
     ]
-    temperature: Optional[float] = 0.7
-    top_p: Optional[float] = 1.0
-    top_k: Optional[int] = -1
+    temperature: Optional[float] = 0.5
+    top_p: Optional[float] = 0.25
+    top_k: Optional[int] = 20
     n: Optional[int] = 1
     max_tokens: Optional[int] = None
     stop: Optional[Union[str, List[str]]] = None
     stream: Optional[bool] = False
     presence_penalty: Optional[float] = 0.0
-    frequency_penalty: Optional[float] = 0.0
+    frequency_penalty: Optional[float] = 1.05
     user: Optional[str] = None
+    #TODO
 
 
 class ChatMessage(BaseModel):
