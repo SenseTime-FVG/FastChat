@@ -130,7 +130,7 @@ async def api_generate_stream(request: Request):
     await acquire_worker_semaphore()
     params["request"] = request
     generator = worker.generate_stream(params)
-    return StreamingResponse(generator, background=background_tasks)
+    return StreamingResponse(generator)
 
 
 @app.post("/worker_generate")

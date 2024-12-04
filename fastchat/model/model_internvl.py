@@ -83,35 +83,38 @@ def generate_stream_internvl(
     import io
 
     all_pixel_values = []
-    for image in params["images"]:
-        if image.startswith("data:"):
-            image_obj = image.split(";", 1)[1]
-            image_obj = base64.b64decode(image_obj[7:])
-        else:
-            image_obj = base64.b64decode(image)
-        image_obj = Image.open(io.BytesIO(image_obj))
-        image = image_obj.convert("RGB")
-        from fastchat.model.image_utils import dynamic_preprocess_v3, build_transform
-        #需要传入的参数 self.image_size self.max_num self.use_thumbnail
-        processed_images = dynamic_preprocess_v3(
-                            image,
-                            max_num=6,    #max_num,
-                            image_size=448,  #image_size,
-                            use_thumbnail=True,    # use_thumbnail,
-        )
-        transform=build_transform(is_train=False, image_size=448)
-        pixel_value = [
-            transform(image) for image in processed_images
-        ]
-        replacement = (
-                "<|img_start|>"
-                + "<IMG_CONTEXT>" * 256 * len(pixel_value)
-                + "<|img_end|>\n"
+    if params.get("images"):
+        for image in params["images"]:
+            if image.startswith("data:"):
+                image_obj = image.split(";", 1)[1]
+                image_obj = base64.b64decode(image_obj[7:])
+            else:
+                image_obj = base64.b64decode(image)
+            image_obj = Image.open(io.BytesIO(image_obj))
+            image = image_obj.convert("RGB")
+            from fastchat.model.image_utils import dynamic_preprocess_v3, build_transform
+            #需要传入的参数 self.image_size self.max_num self.use_thumbnail
+            processed_images = dynamic_preprocess_v3(
+                                image,
+                                max_num=6,    #max_num,
+                                image_size=448,  #image_size,
+                                use_thumbnail=True,    # use_thumbnail,
             )
-        prompt = prompt.replace("<|img_start|><|img_end|>\n", replacement, 1)
-        all_pixel_values.extend(pixel_value)   
-    if all_pixel_values:
-        all_pixel_values = torch.stack(all_pixel_values).to(torch.bfloat16).cuda()
+            transform=build_transform(is_train=False, image_size=448)
+            pixel_value = [
+                transform(image) for image in processed_images
+            ]
+            replacement = (
+                    "<|img_start|>"
+                    + "<IMG_CONTEXT>" * 256 * len(pixel_value)
+                    + "<|img_end|>\n"
+                )
+            prompt = prompt.replace("<|img_start|><|img_end|>\n", replacement, 1)
+            all_pixel_values.extend(pixel_value)   
+        if all_pixel_values:
+            all_pixel_values = torch.stack(all_pixel_values).to(torch.bfloat16).cuda()
+        else:
+            all_pixel_values = None
     else:
         all_pixel_values = None
     img_context_token_id = tokenizer.convert_tokens_to_ids("<IMG_CONTEXT>")
@@ -129,8 +132,6 @@ def generate_stream_internvl(
     top_p = float(params.get("top_p", 0.25))
     top_k = int(params.get("top_k", 20))  # -1 means disable
     max_new_tokens = int(params.get("max_new_tokens", 1024))
-    logprobs = params.get("logprobs", None)  # FIXME: Support logprobs>1.
-    echo = bool(params.get("echo", True))
     stop_str = params.get("stop", None)
     stop_token_ids = params.get("stop_token_ids", None) or []
     do_sample = params.get("do_sample", True)

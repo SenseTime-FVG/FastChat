@@ -305,14 +305,10 @@ async def get_gen_params(
     temperature: float,
     top_p: float,
     top_k: Optional[int],
-    presence_penalty: Optional[float],
     frequency_penalty: Optional[float],
     max_tokens: Optional[int],
-    echo: Optional[bool],
     logprobs: Optional[int] = None,
     stop: Optional[Union[str, List[str]]],
-    best_of: Optional[int] = None,
-    use_beam_search: Optional[bool] = None,
     special_token: Optional[dict] = None,
 ) -> Dict[str, Any]:
     
@@ -356,28 +352,33 @@ async def get_gen_params(
                         for item in message["content"]
                         if item["type"] == "video_url"
                     ]
+                    audio_list = [
+                        item["audio_url"]["url"]
+                        for item in message["content"]
+                        if item["type"] == "audio_url"
+                    ]
                     # TODO audio、video
                     # TODO： 拼special token
                     # TODO(chris): This only applies to LLaVA model. Implement an image_token string in the conv template.
+                    text = ""
                     if video_list:
-                        full_text = ""
-                        base64_frames = []
                         for video_url in video_list:
                             frame_idxs = get_middle_idxs(10)
                             frames = extract_frames(video_url, frame_idxs)
                             frame_descriptions = []
                             for idx, frame in enumerate(frames):
                                 base64_frame = frame_to_base64(frame)
-                                base64_frames.append(base64_frame)
+                                image_list.append(base64_frame)
                                 frame_placeholder = f"Frame{idx + 1}: {special_token['video']}"
                                 frame_descriptions.append(frame_placeholder)
-                            full_text += "".join(frame_descriptions)
-                        full_text += "".join(text_list)
-                        conv.append_message(conv.roles[0], (full_text, base64_frames))
+                            text += "".join(frame_descriptions)
                     else:
-                        text = special_token['img'] * len(image_list)
-                        text += "\n".join(text_list)
-                        conv.append_message(conv.roles[0], (text, image_list))
+                        text += special_token['img'] * len(image_list)
+                    if audio_list:
+                        text += special_token['audio'] * len(audio_list)
+
+                    text += "\n".join(text_list)
+                    conv.append_message(conv.roles[0], (text, []))
                 else:
                     conv.append_message(conv.roles[0], message["content"])
             elif msg_role == "assistant":
@@ -388,7 +389,8 @@ async def get_gen_params(
         # Add a blank message for the assistant.
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
-        images = conv.get_images()
+        images = image_list
+        audios = audio_list
 
     gen_params = {
         "model": model_name,
@@ -397,20 +399,15 @@ async def get_gen_params(
         "logprobs": logprobs,
         "top_p": top_p,
         "top_k": top_k,
-        "presence_penalty": presence_penalty,
         "frequency_penalty": frequency_penalty,
         "max_new_tokens": max_tokens,
-        "echo": echo,
         "stop_token_ids": conv.stop_token_ids,
     }
 
     if len(images) > 0:
         gen_params["images"] = images
-
-    if best_of is not None:
-        gen_params.update({"best_of": best_of})
-    if use_beam_search is not None:
-        gen_params.update({"use_beam_search": use_beam_search})
+    if len(audios) > 0:
+        gen_params["audios"] = audios
 
     new_stop = set()
     _add_to_set(stop, new_stop)
@@ -490,10 +487,8 @@ async def create_chat_completion(request: ChatCompletionRequest):
         temperature=request.temperature,
         top_p=request.top_p,
         top_k=request.top_k,
-        presence_penalty=request.presence_penalty,
         frequency_penalty=request.frequency_penalty,
         max_tokens=request.max_tokens,
-        echo=False,
         stop=request.stop,
         special_token=special_token,
 
@@ -947,7 +942,7 @@ def create_openai_api_server():
     parser.add_argument("--host", type=str, default="localhost", help="host name")
     parser.add_argument("--port", type=int, default=8000, help="port number")
     parser.add_argument(
-        "--controller-address", type=str, default="http://localhost:21001"
+        "--controller-address", type=str, default="http://0.0.0.0:21001"
     )
     parser.add_argument(
         "--allow-credentials", action="store_true", help="allow credentials"
