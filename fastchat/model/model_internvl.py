@@ -133,7 +133,7 @@ def generate_stream_internvl(
     top_k = int(params.get("top_k", 20))  # -1 means disable
     max_new_tokens = int(params.get("max_new_tokens", 1024))
     stop_str = params.get("stop", None)
-    stop_token_ids = params.get("stop_token_ids", None) or []
+    stop_token_ids = params.get("stop", None) or []
     do_sample = params.get("do_sample", True)
     if tokenizer.eos_token_id not in stop_token_ids:
         stop_token_ids.append(tokenizer.eos_token_id)
@@ -171,7 +171,7 @@ def generate_stream_internvl(
             do_sample=do_sample,
             temperature=temperature,
             repetition_penalty=repetition_penalty,
-            eos_token_id=eos_token_id,
+            eos_token_id=stop_token_ids,
             streamer=streamer,
         )
     generation_kwargs = dict(

@@ -231,7 +231,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--controller-url",
         type=str,
-        default="http://localhost:21001",
+        default="http://0.0.0.0:21001",
         help="The address of the controller",
     )
     parser.add_argument(

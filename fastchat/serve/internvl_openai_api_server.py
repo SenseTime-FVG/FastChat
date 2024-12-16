@@ -131,7 +131,7 @@ async def fetch_remote(url, pload=None, name=None):
 
 class AppSettings(BaseSettings):
     # The address of the model controller.
-    controller_address: str = "http://localhost:21001"
+    controller_address: str = "http://0.0.0.0:21001"
     api_keys: Optional[List[str]] = None
 
 
@@ -297,6 +297,97 @@ def _add_to_set(s, new_stop):
         new_stop.update(s)
 
 
+async def get_gen_prompt(
+    model_name: str,
+    worker_addr: str,
+    messages: Union[str, List[Dict[str, str]]],
+    *,
+    special_token: Optional[dict] = None,
+) -> Dict[str, Any]:
+    
+    conv = await get_conv(model_name, worker_addr)
+    conv = Conversation(
+        name=conv["name"],
+        system_template=conv["system_template"],
+        system_message=conv["system_message"],
+        roles=conv["roles"],
+        messages=list(conv["messages"]),  # prevent in-place modification
+        offset=conv["offset"],
+        sep_style=SeparatorStyle(conv["sep_style"]),
+        sep=conv["sep"],
+        sep2=conv["sep2"],
+        stop_str=conv["stop_str"],
+        stop_token_ids=conv["stop_token_ids"],
+    )
+    
+    if isinstance(messages, str):
+        prompt = messages
+    else:
+        for message in messages:
+            msg_role = message["role"]
+            if msg_role == "system":
+                conv.set_system_message(message["content"])
+            elif msg_role == "user":
+                if type(message["content"]) == list:
+                    image_list = [
+                        item["image_url"]["url"]
+                        for item in message["content"]
+                        if item["type"] == "image_url"
+                    ]
+                    text_list = [
+                        item["text"]
+                        for item in message["content"]
+                        if item["type"] == "text"
+                    ]
+                    video_list = [
+                        item["video_url"]["url"]
+                        for item in message["content"]
+                        if item["type"] == "video_url"
+                    ]
+                    audio_list = [
+                        item["audio_url"]["url"]
+                        for item in message["content"]
+                        if item["type"] == "audio_url"
+                    ]
+                    text = ""
+                    if video_list:
+                        for video_url in video_list:
+                            frame_idxs = get_middle_idxs(10)
+                            frames = extract_frames(video_url, frame_idxs)
+                            frame_descriptions = []
+                            for idx, frame in enumerate(frames):
+                                frame_placeholder = f"Frame{idx + 1}: {special_token['video']}"
+                                frame_descriptions.append(frame_placeholder)
+                            text += "".join(frame_descriptions)
+                    else:
+                        text += special_token['img'] * len(image_list)
+                    if audio_list:
+                        text += special_token['audio'] * len(audio_list)
+
+                    text += "\n".join(text_list)
+                    conv.append_message(conv.roles[0], (text, []))
+                else:
+                    conv.append_message(conv.roles[0], message["content"])
+            elif msg_role == "assistant":
+                conv.append_message(conv.roles[1], message["content"])
+            else:
+                raise ValueError(f"Unknown role: {msg_role}")
+
+        # Add a blank message for the assistant.
+        conv.append_message(conv.roles[1], None)
+        prompt = conv.get_prompt()
+
+
+    gen_params = {
+        "model": model_name,
+        "prompt": prompt,
+    }
+
+
+
+    logger.debug(f"==== request ====\n{gen_params}")
+    return gen_params
+
 async def get_gen_params(
     model_name: str,
     worker_addr: str,
@@ -305,7 +396,7 @@ async def get_gen_params(
     temperature: float,
     top_p: float,
     top_k: Optional[int],
-    frequency_penalty: Optional[float],
+    repetition_penalty: Optional[float],
     max_tokens: Optional[int],
     logprobs: Optional[int] = None,
     stop: Optional[Union[str, List[str]]],
@@ -399,9 +490,8 @@ async def get_gen_params(
         "logprobs": logprobs,
         "top_p": top_p,
         "top_k": top_k,
-        "frequency_penalty": frequency_penalty,
+        "repetition_penalty": repetition_penalty,
         "max_new_tokens": max_tokens,
-        "stop_token_ids": conv.stop_token_ids,
     }
 
     if len(images) > 0:
@@ -409,10 +499,9 @@ async def get_gen_params(
     if len(audios) > 0:
         gen_params["audios"] = audios
 
+
     new_stop = set()
     _add_to_set(stop, new_stop)
-    _add_to_set(conv.stop_str, new_stop)
-
     gen_params["stop"] = list(new_stop)
 
     logger.debug(f"==== request ====\n{gen_params}")
@@ -466,6 +555,29 @@ async def show_available_models():
         model_cards.append(ModelCard(id=m, root=m, permission=[ModelPermission()]))
     return ModelList(data=model_cards)
 
+from pydantic import BaseModel
+class PromptData(BaseModel):
+    model: str
+    messages: list
+
+@app.post("/v1/chat/prompt", dependencies=[Depends(check_api_key)])
+async def create_prompt(data: PromptData):
+    error_check_ret = await check_model(data)
+    if error_check_ret is not None:
+        return error_check_ret
+
+    worker_addr = await get_worker_address(data.model)
+    details = await get_worker_details(data.model)
+    special_token = json.loads(details)['special_token']
+    gen_params = await get_gen_prompt(
+        data.model,
+        worker_addr,
+        data.messages,
+        special_token=special_token,
+    )
+    return gen_params["prompt"]
+
+
 
 @app.post("/v1/chat/completions", dependencies=[Depends(check_api_key)])
 async def create_chat_completion(request: ChatCompletionRequest):
@@ -487,7 +599,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
         temperature=request.temperature,
         top_p=request.top_p,
         top_k=request.top_k,
-        frequency_penalty=request.frequency_penalty,
+        repetition_penalty=request.repetition_penalty,
         max_tokens=request.max_tokens,
         stop=request.stop,
         special_token=special_token,
@@ -631,18 +743,15 @@ async def create_completion(request: CompletionRequest):
             gen_params = await get_gen_params(
                 request.model,
                 worker_addr,
-                text,
+                request.messages,
                 temperature=request.temperature,
                 top_p=request.top_p,
                 top_k=request.top_k,
-                frequency_penalty=request.frequency_penalty,
                 presence_penalty=request.presence_penalty,
+                frequency_penalty=request.frequency_penalty,
                 max_tokens=request.max_tokens,
-                logprobs=request.logprobs,
-                echo=request.echo,
+                echo=False,
                 stop=request.stop,
-                best_of=request.best_of,
-                use_beam_search=request.use_beam_search,
             )
             for i in range(request.n):
                 content = asyncio.create_task(
@@ -689,15 +798,14 @@ async def generate_completion_stream_generator(
             gen_params = await get_gen_params(
                 request.model,
                 worker_addr,
-                text,
+                request.messages,
                 temperature=request.temperature,
                 top_p=request.top_p,
                 top_k=request.top_k,
                 presence_penalty=request.presence_penalty,
                 frequency_penalty=request.frequency_penalty,
                 max_tokens=request.max_tokens,
-                logprobs=request.logprobs,
-                echo=request.echo,
+                echo=False,
                 stop=request.stop,
             )
             async for content in generate_completion_stream(gen_params, worker_addr):
@@ -939,7 +1047,7 @@ def create_openai_api_server():
     parser = argparse.ArgumentParser(
         description="FastChat ChatGPT-Compatible RESTful API server."
     )
-    parser.add_argument("--host", type=str, default="localhost", help="host name")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="host name")
     parser.add_argument("--port", type=int, default=8000, help="port number")
     parser.add_argument(
         "--controller-address", type=str, default="http://0.0.0.0:21001"

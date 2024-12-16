@@ -35,15 +35,18 @@ class LightLLMWorker(BaseModelWorker):
         worker_addr: str,
         worker_id: str,
         model_path: str,
-        model_names: List[str],
+        model_name: str,
         limit_worker_concurrency: int,
         no_register: bool,
         conv_template: str,
         api_url: str,
         max_num: int,
         special_token: dict,
-        img_processor: str,
-    ):
+        processor: dict,
+        eos_id: int,
+        img_token_number: int=64,  
+    ):  
+        model_names =[model_name]
         super().__init__(
             controller_addr,
             worker_addr,
@@ -55,13 +58,15 @@ class LightLLMWorker(BaseModelWorker):
         )
 
         logger.info(
-            f"Loading the model {self.model_names} on worker {worker_id}, worker type: LightLLM worker..."
+            f"Loading the model {model_name} on worker {worker_id}, worker type: LightLLM worker..."
         )
         self.api_url=api_url
         self.max_num=max_num
         self.special_token = special_token
         self.conv_template = conv_template
-        self.img_processor = img_processor
+        self.processor = processor
+        self.eos_id = eos_id
+        self.img_token_number = img_token_number
 
         if not no_register:
             self.init_heart_beat()
@@ -84,9 +89,6 @@ class LightLLMWorker(BaseModelWorker):
             "max_new_tokens": max_new_tokens,
             "stop_sequences": ["<|im_end|>"],
         }
-
-        import pdb
-        pdb.set_trace()
         images_data = []
         for image in params.get("images", []):
             images_data.append({"type": "base64", "data": image})
@@ -166,38 +168,39 @@ async def api_model_details(request: Request):
 @app.post("/worker_details") #TODO
 async def api_model_details(request: Request):
     config = {
-        "context_length": worker.context_len,
         "special_token": worker.special_token,
         "conv_template": worker.conv_template,
-        "img_processor": worker.img_processor,
-        "max-num" : worker.max_num,
-        
-
-    }
+        "eos_id": worker.eos_id,
+        "processor": worker.processor,
+        "img_token_number": worker.img_token_number,
+        "gen_params" : {"top_k": 20, "top_p": 0.25, "temperature": 0.5, "repetition_penalty": 1.05, "max_new_tokens": 4096},
+        }
     return config
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="localhost")
+    parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--port", type=int, default=21390)
     parser.add_argument(
-        "--api-url", type=str, default="http://10.119.19.117:8080"
+        "--api-url", type=str, default="http://0.0.0.0:8080"
     )
-    parser.add_argument("--worker-address", type=str, default="http://localhost:21390")
+    parser.add_argument("--worker-address", type=str, default="http://0.0.0.0:21390")
     parser.add_argument(
-        "--controller-address", type=str, default="http://localhost:21001"
-    )
-    parser.add_argument(
-        "--conv-template", type=str, default=None, help="Conversation prompt template."
+        "--controller-address", type=str, default="http://0.0.0.0:21001"
     )
     parser.add_argument(
-        "--model-names",
-        type=lambda s: s.split(","),
+        "--conv-template", type=str, default="internlm2-chat-v3", help="Conversation prompt template."
+    )
+    parser.add_argument(
+        "--model-name",
+        type=str,
         help="Optional display comma separated names",
     )
+    parser.add_argument("--eos-id", type=int, default=151645, help="Eos id")
     parser.add_argument("--limit-worker-concurrency", type=int, default=1024)
     parser.add_argument("--no-register", action="store_true")
+    parser.add_argument("--img-token-number", type=int, default=64)
 
     args = parser.parse_args()
 
@@ -205,21 +208,25 @@ if __name__ == "__main__":
     # context_length = get_context_length(model_config
     context_length = 1024 * 32
 
-
     worker = LightLLMWorker(
         args.controller_address,
         args.worker_address,
         worker_id,
         None,
-        args.model_names,
+        args.model_name,
         args.limit_worker_concurrency,
         args.no_register,
         args.conv_template,
         args.api_url,
         max_num=6,
         special_token={"img": "<img></img>\n",
-                        "video": "<img></img>\n"},
-        img_processor="v3",
+                        "video": "<|img_start|><|img_end|>\n",
+                        "audio": "<audio></audio>\n"},
+        processor={"image": "dynamic_preprocess_v3",
+                    "audio": "audio_processor",
+                    "video": "video_processor"},
+        eos_id=args.eos_id,
+        img_token_number=args.img_token_number
     )
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

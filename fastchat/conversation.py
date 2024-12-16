@@ -743,7 +743,6 @@ register_conv_template(
         roles=("<|im_start|>user\n", "<|im_start|>assistant\n"),
         sep_style=SeparatorStyle.MPT,
         sep="<|im_end|>",
-        stop_token_ids=[2, 92543, 92542],
     )
 )
 
@@ -760,7 +759,6 @@ register_conv_template(
         ),
         sep_style=SeparatorStyle.MPT,
         sep="<|im_end|>\n",
-        stop_token_ids=[2, 92543, 92542],
     )
 )
 
@@ -775,8 +773,7 @@ register_conv_template(
             "<|im_start|>knowledge\n",
         ),
         sep_style=SeparatorStyle.MPT,
-        sep="<|im_end|>\n",
-        stop_token_ids=[2, 92543, 92542],
+        sep="<|im_end|>\n"
     )
 )
 
