@@ -185,7 +185,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--api-url", type=str, default="http://0.0.0.0:8080"
     )
-    parser.add_argument("--worker-address", type=str, default="http://0.0.0.0:21390")
+    parser.add_argument("--worker-address", type=str, default="http://10.119.30.84:21390")
     parser.add_argument(
         "--controller-address", type=str, default="http://0.0.0.0:21001"
     )

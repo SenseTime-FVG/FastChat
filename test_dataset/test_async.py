@@ -87,7 +87,7 @@ async def process_entry(session, model, system_prompt, parameters,entry):
     return entry
 
 
-async def main(dataset_id: str, output_file: str, system_prompt: str ,parameters: dict, max_concurrent_tasks: int=10):
+async def main(dataset_id: str, output_file: str, system_prompt: str ,parameters: dict, model_id: int,max_concurrent_tasks: int=10):
     api_url = f"{system_url}/download_dataset/{dataset_id}"
     try:
         response = requests.get(api_url)
@@ -97,20 +97,7 @@ async def main(dataset_id: str, output_file: str, system_prompt: str ,parameters
         logger.error(f"Error fetching data: {e}")
         exit()
     model_name = test_list_models()[0]
-    try:
-        url = f"{system_url}/model"
-        payload = json.dumps({
-        "dataset_id": dataset_id, 
-        "model_name": model_name,
-        })
-        headers = {
-        'Content-Type': 'application/json'
-        }
-        response_model_id = requests.request("POST", url, headers=headers, data=payload)
-        model_id = response_model_id.json()["model_id"]
-    except requests.exceptions.RequestException as e:
-        logger.error("Cannot Post Model_id")
-        return ""
+    print(data)
     try:
         semaphore = asyncio.Semaphore(max_concurrent_tasks)
         async with aiohttp.ClientSession() as session:
@@ -135,7 +122,7 @@ async def main(dataset_id: str, output_file: str, system_prompt: str ,parameters
         response = requests.request("POST", url, headers={}, data=payload, files=files)
         response.raise_for_status()
         logger.info("Upload successful!")
-    except:
+    except Exception as e:
         url = f"{system_url}/update_model_status"
         payload = json.dumps({
         "model_id": model_id,
@@ -146,7 +133,7 @@ async def main(dataset_id: str, output_file: str, system_prompt: str ,parameters
         }
         response = requests.request("POST", url, headers=headers, data=payload)
 
-        logger.error("Upload failed.")
+        logger.error("Upload failed.: {}".format(e))
         exit()
     
 
@@ -158,6 +145,7 @@ if __name__ == "__main__":
     parser.add_argument("--openai_server_url", type=str, default="http://0.0.0.0:8000/v1/", help="Openai Serve base URL")
     parser.add_argument("--system-prompt", type=str, default="", help="System prompt")
     parser.add_argument("--max_concurrent_tasks", type=int, default=10, help="Max concurrent tasks")
+    parser.add_argument("--model_id", type=int, required=True, help="model_id to fetch")
     parser.add_argument("--temperature", type=float, default=0.5, help="Temperature")
     parser.add_argument("--max_tokens", type=int, default=4096, help="Max tokens")
     parser.add_argument("--top_p", type=float, default=0.25, help="Top p")
@@ -179,4 +167,4 @@ if __name__ == "__main__":
         "stop_sequences": args.stop_sequences,
         "skip_special_tokens": args.skip_special_tokens,
     }
-    asyncio.run(main(args.dataset_id, args.output_file, args.system_prompt, parameters, args.max_concurrent_tasks))
+    asyncio.run(main(args.dataset_id, args.output_file, args.system_prompt, parameters, args.model_id, args.max_concurrent_tasks))

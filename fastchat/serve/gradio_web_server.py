@@ -232,7 +232,7 @@ def get_model_list(controller_url, register_api_endpoint_file, vision_arena):
 
 def load_demo_single(context: Context, query_params):
     # default to text models
-    models = context.text_models
+    models = context.vision_models
 
     selected_model = models[0] if len(models) > 0 else ""
     if "model" in query_params:
@@ -251,7 +251,7 @@ def load_demo_single(context: Context, query_params):
 
 def load_demo(url_params, request: gr.Request):
     global models
-
+    all_models = models
     ip = get_ip(request)
     logger.info(f"load_demo. ip: {ip}. params: {url_params}")
 
@@ -260,7 +260,15 @@ def load_demo(url_params, request: gr.Request):
             controller_url, args.register_api_endpoint_file, vision_arena=False
         )
 
-    return load_demo_single(models, url_params)
+    context = Context(
+        models,
+        all_models,
+        models,
+        all_models,
+        models,
+        all_models,
+    )
+    return load_demo_single(context, url_params)
 
 
 def vote_last_response(state, vote_type, model_selector, request: gr.Request):
@@ -391,7 +399,6 @@ def model_worker_stream_iter(
 
     if len(images) > 0:
         gen_params["images"] = images
-
     # Stream output
     response = requests.post(
         worker_addr + "/worker_generate_stream",
@@ -425,7 +432,7 @@ def bot_response(
     top_p,
     max_new_tokens,
     request: gr.Request,
-    apply_rate_limit=True,
+    apply_rate_limit=False,
     use_recommended_config=False,
 ):
     ip = get_ip(request)
@@ -1015,7 +1022,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--controller-url",
         type=str,
-        default="http://localhost:21001",
+        default="http://10.119.30.84:21001",
         help="The address of the controller",
     )
     parser.add_argument(
@@ -1068,7 +1075,7 @@ if __name__ == "__main__":
     # Set global variables
     set_global_vars(args.controller_url, args.moderate, args.use_remote_storage)
     models, all_models = get_model_list(
-        args.controller_url, args.register_api_endpoint_file, vision_arena=False
+        args.controller_url, args.register_api_endpoint_file, vision_arena=True
     )
 
     # Set authorization credentials

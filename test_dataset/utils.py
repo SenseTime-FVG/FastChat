@@ -23,9 +23,10 @@ class MLLMType(str, Enum):
 
 ## VisionConfig
 class VisionModelType(str, Enum):
-    v_0_3b = "vit_0.3b"
-    v_0_6b = "vit_0.6b"
-    v1b = "vit_1b"
+    v_0_3b = "vit0.3b"
+    v_0_6b = "vit0.6b"
+    v_1b = "vit_1b"
+    v_6b = "vit_6b"
 
 
 class DynamicPreprocessVersion(str, Enum):
@@ -125,7 +126,7 @@ class ClusterType(str, Enum):
         if cluster == cls.m:
             return [PoolType.AMP, PoolType.amplarge]
         elif cluster == cls.public:
-            return [PoolType.ndation_workspace, PoolType.debug]
+            return [PoolType.foundation, PoolType.debug]
         else:
             raise ValueError("Invalid cluster type")
 
@@ -146,7 +147,7 @@ class PoolType(str, Enum):
             raise ValueError("Invalid pool type")
         
 class BackendType(str, Enum):
-    transforemer = "transforemer"
+    transformer = "transformer"
     lightllm = "lightllm"
     vllm = "vllm"
 
@@ -193,3 +194,4 @@ class RequestModel(BaseModel):
 class ResponseModel(BaseModel):
     code: int = Field(description="返回码")
     message: str = Field(description="返回信息")
+    job_id: str = Field(description="任务ID", default=None)

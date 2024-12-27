@@ -45,13 +45,13 @@ app_display_name="lightllm-${current_date}-${dataset_id}"
 echo "$app_display_name"
 
 tamp=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 6 ; echo '')
-log_file="/mnt/afs/user/wuxianye/log/lightllm-log/${tamp}.log"
-log_file="/mnt/afs/user/wuxianye/log/lightllm-log/${}.log"
+
 
 
 command="sco acp jobs create --workspace-name=$workspace_name \
     -p $pool  \
     --container-image-url $container_image_url \
+     \
     --storage-mount ef9e6157-1f8e-11ee-88d0-c6880f6d70d9:/mnt/afs,9ec12cab-664b-11ee-ad94-e6e9d682052e:/mnt/pubdata  \
     --worker-spec N3lS.Ii.I60.$gpus  -f pytorch -j $app_display_name --command=\"$INFER \""
 echo "model_name: $model_name"
