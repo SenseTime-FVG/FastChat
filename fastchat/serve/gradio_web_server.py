@@ -185,7 +185,6 @@ def get_conv_log_filename(is_vision=False, has_csam_image=False):
 
 def get_model_list(controller_url, register_api_endpoint_file, vision_arena):
     global api_endpoint_info
-
     # Add models from the controller
     if controller_url:
         ret = requests.post(controller_url + "/refresh_all_workers")

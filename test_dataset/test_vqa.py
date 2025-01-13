@@ -3,7 +3,7 @@ import requests
 request_model = RequestModel(
         model=Model(
             path="/mnt/afs/user/zhengzhimeng/models/vit0.3b_internlm7b_stage3_v6.8.1_lr2e-5_20240911_v1/",
-            model_name="test_1213vqav3",
+            model_name="test_1213vqav4",
             default_system_prompt="你是商汤科技开发的日日新多模态大模型",
             config={
                 "vision": VisionConfig(

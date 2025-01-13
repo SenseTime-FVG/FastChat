@@ -23,8 +23,8 @@ class MLLMType(str, Enum):
 
 ## VisionConfig
 class VisionModelType(str, Enum):
-    v_0_3b = "vit0.3b"
-    v_0_6b = "vit0.6b"
+    v_0_3b = "vit_0.3b"
+    v_0_6b = "vit_0.6b"
     v_1b = "vit_1b"
     v_6b = "vit_6b"
 

@@ -1,20 +1,19 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-pip install /mnt/afs/user/wuxianye/test/auto_api/lightllm-api/zzm/fschat-0.2.36-py3-none-any.whl
+pip install /mnt/afs/user/zhengzhimeng/FastChat/dist/fschat-0.2.36-py3-none-any.whl
 pip install aiofiles openai
-pip install /mnt/afs/user/wuxianye/test/auto_api/lightllm-api/zzm/opencv_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+pip install /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/opencv_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
 
 
-MODEL_PATH=/mnt/afs/user/wuxianye/share_data/vit6b_qwen2_5_72b_stage3_v8.2_stage4_dpo_20241205/
-VIT_ENV=vit6b+aspect_v5+vit
-MAX_PATCH_NUM=-1
+MODEL_PATH=/mnt/afs/user/zhengzhimeng/models/vit0.3b_qwen2_5_14b_stage3_v6.9.3.5_20241219_v1/
+VIT_ENV=vit_0.3b+aspect_v5+internchat
+MAX_PATCH_NUM=12
 IMAGE_TOKEN_NUM=256
-gpus=4
+gpus=1
 eos_id=151645
-dataset_id=107
-model_name=vit6b_qwen2_5_72b_stage3_v8.2_stage4_dpo_20241205
-model_id=2123
+dataset_id=271
+model_name=test_0113v7
+model_id=2489
 system_prompt=''
 max_new_tokens=4096
 temperature=0.5
@@ -61,7 +60,7 @@ if ! check_port "0.0.0.0" 21001 30 10; then
     exit 1
 fi
 
-python3 -m fastchat.serve.lightllm_worker_internvl     --host 0.0.0.0     --port 21390     --api-url http://0.0.0.0:8080     --conv-template internlm2-chat-v3     --controller-address http://0.0.0.0:21001     --img-token-number $IMAGE_TOKEN_NUM     --eos-id $eos_id     --model-name $model_name  & 
+python3 -m fastchat.serve.lightllm_worker_internvl     --host 0.0.0.0     --port 21390     --worker-address http://0.0.0.0:21390     --api-url http://0.0.0.0:8080     --conv-template internlm2-chat-v3     --controller-address http://0.0.0.0:21001     --img-token-number $IMAGE_TOKEN_NUM     --eos-id $eos_id     --model-name $model_name  & 
 
 if ! check_port "0.0.0.0" 21390 30 10; then
     echo "21390 is not available"
@@ -78,4 +77,4 @@ SYSTEM_PROMPT_ARG=""
 if [[ -n "$system_prompt" ]]; then
 SYSTEM_PROMPT_ARG="--system-prompt "$system_prompt""
 fi
-python /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/test_async.py      --dataset-id $dataset_id      --output-file  /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/output.json        --max_concurrent_tasks  10      --openai_server_url  http://0.0.0.0:8000/v1/      --model_id $model_id     $SYSTEM_PROMPT_ARG      --temperature $temperature      --max_tokens $max_new_tokens     --top_k $top_k      --top_p $top_p      --repetition_penalty $repetition_penalty      --do_sample $do_sample      --stop_sequences $stop_sequences      --skip_special_tokens $skip_special_tokens      
+python /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/test_async.py      --dataset-id $dataset_id      --output-file  /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/$model_id.json        --max_concurrent_tasks  10      --openai_server_url  http://0.0.0.0:8000/v1/      --model_id $model_id     $SYSTEM_PROMPT_ARG      --temperature $temperature      --max_tokens $max_new_tokens     --top_k $top_k      --top_p $top_p      --repetition_penalty $repetition_penalty      --do_sample $do_sample      --stop_sequences $stop_sequences      --skip_special_tokens $skip_special_tokens      

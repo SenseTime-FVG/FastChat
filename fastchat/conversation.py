@@ -350,6 +350,18 @@ class Conversation:
                         images.append(image)
 
         return images
+    
+    def get_audio(self):
+        audios = []
+        for i, (role, msg) in enumerate(self.messages[self.offset :]):
+            if i % 2 == 0:
+                if type(msg) is tuple:
+                    for audio in msg[1]:
+                        audios.append(audio)
+
+        return audios
+    
+    
 
     def set_system_message(self, system_message: str):
         """Set the system message."""

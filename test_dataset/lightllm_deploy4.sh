@@ -59,4 +59,18 @@ echo "model_name: $model_name"
 
 echo "$command"
 
-eval $command | tee $log_file
+
+if echo "$container_image_url" | grep -q "^registry\.ms-sc-01"; then
+    echo "container_image_url starts with 'registry.ms-sc-01', executing via SSH on mcore..."
+
+    command=$(echo "$command" | sed "s/--worker-spec N3lS\.Ii\.I60\.$gpus/--worker-spec N6lS.Iu.I80.$gpus/")
+    command=$(echo "$command" | sed "s|--storage-mount ef9e6157-1f8e-11ee-88d0-c6880f6d70d9:/mnt/afs,9ec12cab-664b-11ee-ad94-e6e9d682052e:/mnt/pubdata|--storage-mount ce3b1174-f6eb-11ee-a372-82d352e10aed:/mnt/afs,1f29056c-c3f2-11ee-967e-2aea81fd34ba:/mnt/afs2,047443d2-c3f2-11ee-a5f9-9e29792dec2f:/mnt/afs1|")
+    ssh mcore << EOF
+        echo "Logged into remote host: $(hostname)"
+        echo "Executing command on remote host..."
+        eval $command | tee $log_file
+EOF
+else
+    echo "executing on Sensecore"
+    eval $command | tee $log_file
+fi

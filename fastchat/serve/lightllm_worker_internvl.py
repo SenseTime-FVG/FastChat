@@ -91,6 +91,8 @@ class LightLLMWorker(BaseModelWorker):
         }
         images_data = []
         for image in params.get("images", []):
+            if image.startswith("data:image"):
+                image = image.split(",")[1]
             images_data.append({"type": "base64", "data": image})
 
         data = {

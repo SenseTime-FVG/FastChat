@@ -123,15 +123,16 @@ def send(request: RequestModel):
         max_new_tokens = request.sampling.max_new_tokens
         do_sample = request.sampling.do_sample
         stop_sequences = request.sampling.stop_sequences
-        skip_special_tokens = request.sampling.skip_special_tokens
+        skip_special_tokens = str(request.sampling.skip_special_tokens)
 
         
-
+        
 
         # System Setting
         workspace = list(sco_id["cluter"][request.system.cluster.value]["workspace"].values())[0]
         pool = sco_id["cluter"][request.system.cluster.value]["pool"][request.system.pool.value]
         container_image = sco_id["backend"][request.system.backend.value]["container_image"][request.system.cluster.value]
+        
         
         
         print("workspace", workspace)
@@ -140,11 +141,12 @@ def send(request: RequestModel):
 
         # 写infer.sh
         # 定义脚本内容
-        infer_script = f"""#!/bin/bash
+        if request.system.cluster.value == "m":
+            infer_script = f"""#!/bin/bash
 
-pip install /mnt/afs/user/wuxianye/test/auto_api/lightllm-api/zzm/fschat-0.2.36-py3-none-any.whl
+pip install /mnt/afs/user/zhengzhimeng/FastChat/dist/fschat-0.2.36-py3-none-any.whl
 pip install aiofiles openai
-pip install /mnt/afs/user/wuxianye/test/auto_api/lightllm-api/zzm/opencv_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+pip install /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/opencv_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
 
 
 MODEL_PATH={model_path}
@@ -223,6 +225,7 @@ fi
 python3 -m fastchat.serve.lightllm_worker_internvl \
     --host 0.0.0.0 \
     --port 21390 \
+    --worker-address http://0.0.0.0:21390 \
     --api-url http://0.0.0.0:8080 \
     --conv-template internlm2-chat-v3 \
     --controller-address http://0.0.0.0:21001 \
@@ -249,7 +252,132 @@ SYSTEM_PROMPT_ARG="--system-prompt \"$system_prompt\""
 fi
 python /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/test_async.py  \
     --dataset-id $dataset_id  \
-    --output-file  /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/output.json    \
+    --output-file  /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/$model_id.json    \
+    --max_concurrent_tasks  10  \
+    --openai_server_url  http://0.0.0.0:8000/v1/  \
+    --model_id $model_id \
+    $SYSTEM_PROMPT_ARG  \
+    --temperature $temperature  \
+    --max_tokens $max_new_tokens \
+    --top_k $top_k  \
+    --top_p $top_p  \
+    --repetition_penalty $repetition_penalty  \
+    --do_sample $do_sample  \
+    --stop_sequences $stop_sequences  \
+    --skip_special_tokens $skip_special_tokens  \
+"""
+        else:
+            infer_script = f"""#!/bin/bash
+
+pip install /mnt/afs/user/zhengzhimeng/FastChat/dist/fschat-0.2.36-py3-none-any.whl
+pip install aiofiles openai
+pip install /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/opencv_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+
+
+MODEL_PATH={model_path}
+VIT_ENV={VIT_ENV}
+MAX_PATCH_NUM={MAX_PATCH_NUM}
+IMAGE_TOKEN_NUM={IMAGE_TOKEN_NUM}
+gpus={gpus}
+eos_id={eos_id}
+dataset_id={dataset_id}
+model_name={model_name}
+model_id={model_id}
+system_prompt={default_system_prompt}
+max_new_tokens={max_new_tokens}
+temperature={temperature}
+top_k={top_k}
+top_p={top_p}
+repetition_penalty={repetition_penalty}
+do_sample={do_sample}
+stop_sequences={stop_sequences}
+skip_special_tokens={skip_special_tokens}
+
+
+
+model_path=$MODEL_PATH  # Replace with your model path
+VIT_ENV=$VIT_ENV \
+DISABLE_CHECK_MAX_LEN_INFER=1 \
+MAX_PATCH_NUM=$MAX_PATCH_NUM \
+IMAGE_TOKEN_NUM=$IMAGE_TOKEN_NUM \
+LOADWORKER=4 /opt/conda/bin/python -m lightllm.server.api_server \
+    --host 0.0.0.0 \
+    --port 8080 \
+    --tp $gpus \
+    --eos_id $eos_id \
+    --max_req_input_len 32000 \
+    --max_req_total_len 34000 \
+    --max_total_token_num 80000 \
+    --model_dir $model_path \
+    --mode triton_gqa_flashdecoding \
+    --trust_remote_code \
+    --tokenizer_mode fast \
+    --enable_multimodal \
+    --nccl_port 27888 \
+    --data_type bf16 &
+
+check_port() {{
+    local host="$1"
+    local port="$2"
+    local retries="$3"
+    local delay="$4"
+
+    for i in $(seq 1 "$retries"); do
+        python3 -c "import socket; sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM); exit(0) if sock.connect_ex((\\"$host\\", $port)) == 0 else exit(1)"
+        if [ $? -eq 0 ]; then
+            echo "Port $port is available."
+            return 0
+        else
+            echo "Waiting for port $port to become available... Attempt $i/$retries"
+            sleep "$delay"
+        fi
+    done
+    return 1
+}}
+
+if ! check_port "0.0.0.0" 8080 60 10; then
+    echo "8080 is not available"
+    exit 1
+fi
+
+python3 -m fastchat.serve.controller --host 0.0.0.0  --port 21001 &
+
+if ! check_port "0.0.0.0" 21001 30 10; then
+    echo "21001 is not available"
+    exit 1
+fi
+
+python3 -m fastchat.serve.lightllm_worker_internvl \
+    --host 0.0.0.0 \
+    --port 21390 \
+    --worker-address http://0.0.0.0:21390 \
+    --api-url http://0.0.0.0:8080 \
+    --conv-template internlm2-chat-v3 \
+    --controller-address http://0.0.0.0:21001 \
+    --img-token-number $IMAGE_TOKEN_NUM \
+    --eos-id $eos_id \
+    --model-name $model_name  & 
+
+if ! check_port "0.0.0.0" 21390 30 10; then
+    echo "21390 is not available"
+    exit 1
+fi
+
+python3 -m fastchat.serve.internvl_openai_api_server \
+    --host 0.0.0.0 --port 8000  \
+    --controller-address http://0.0.0.0:21001 &
+
+if ! check_port "0.0.0.0" 8000 30 10; then
+    echo "8000 is not available"
+    exit 1
+fi
+SYSTEM_PROMPT_ARG=""
+if [[ -n "$system_prompt" ]]; then
+SYSTEM_PROMPT_ARG="--system-prompt \"$system_prompt\""
+fi
+python /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/test_async.py  \
+    --dataset-id $dataset_id  \
+    --output-file  /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/$model_id.json    \
     --max_concurrent_tasks  10  \
     --openai_server_url  http://0.0.0.0:8000/v1/  \
     --model_id $model_id \
@@ -268,8 +396,11 @@ python /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/test_async.py  \
         filename = "/mnt/afs/user/zhengzhimeng/FastChat/test_dataset/infer1.sh"
         with open(filename, "w", encoding="utf-8") as file:
             file.write(infer_script)
+            file.flush()
 
         print(f"脚本已写入到 {filename}")
+        import pdb
+        pdb.set_trace()
         try:
             result = subprocess.run([sh_path, str(gpus), workspace, pool, container_image],
             stdout=subprocess.PIPE,  # Capture standard output
@@ -282,6 +413,7 @@ python /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/test_async.py  \
             print(f"Extracted job id: {job_id}")
             print("success")
             print(job_storage.mapping)
+            # task = asyncio.create_task(get_job_state_async(workspace, job_id, model_id))
             return {"code": 200, "message": "success", "job_id": job_id}
         except Exception as e:
             print("failed to run")
@@ -304,31 +436,54 @@ python /mnt/afs/user/zhengzhimeng/FastChat/test_dataset/test_async.py  \
 class CancelJobByModelRequest(BaseModel):
     model_id: int
 
-# @app.post("/get_job_state", response_model=ResponseModel)
-# def get_job_state(workspace, job_id):
-#     with open(SCO_ID_FILE, "r", encoding="utf-8") as file:
-#         sco_id = json.load(file)
-#         workspace_name = list(sco_id["cluter"][workspace]["workspace"].values())[0]
-#     try:
-#         result = subprocess.run(
-#             ["sco", "acp", "jobs", "describe", f"--workspace-name={workspace_name}", job_id, "--format=json"],
-#             stdout=subprocess.PIPE,
-#             stderr=subprocess.PIPE,
-#             text=True
-#         )
+def get_job_state(workspace, job_id, model_id):
+    url = f"{system_url}/update_model_status"
+    payload = json.dumps({
+    "model_id": model_id,
+    "status": 3,
+    })
+    headers = {
+    'Content-Type': 'application/json'
+    }
+    response = requests.request("POST", url, headers=headers, data=payload)
+    with open(SCO_ID_FILE, "r", encoding="utf-8") as file:
+        sco_id = json.load(file)
+        workspace_name = list(sco_id["cluter"][workspace]["workspace"].values())[0]
+    try:
+        while True:
+            result = subprocess.run(
+                ["sco", "acp", "jobs", "describe", f"--workspace-name={workspace_name}", job_id, "--format=json"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
 
-#         if result.returncode != 0:
-#             error_message = f"Failed to describe job.\nError: {result.stderr.strip()}\nOutput: {result.stdout.strip()}"
-#             print(error_message)
+            if result.returncode != 0:
+                error_message = f"Failed to describe job.\nError: {result.stderr.strip()}\nOutput: {result.stdout.strip()}"
+                print(error_message)
 
-    
-#         job_info = json.loads(result.stdout)
-#         state = job_info.get("state", "UNKNOWN")
-#         print(f"Job state: {state}")
-#         return {"code": 200, "message": state, "job_id": job_id}
+        
+            job_info = json.loads(result.stdout)
+            state = job_info.get("state", "UNKNOWN")    # RUNNING, STARTING
+            if state == "STARTING":
+                time.sleep(10)
+                continue
+            elif state == "RUNNING":
+                url = f"{system_url}/update_model_status"
+                payload = json.dumps({
+                "model_id": model_id,
+                "status": 0,
+                })
+                headers = {
+                'Content-Type': 'application/json'
+                }
+                response = requests.request("POST", url, headers=headers, data=payload)
+                break
+            print(f"Job state: {state}")
+            return {"code": 200, "message": state, "job_id": job_id}
 
-#     except Exception as e:
-#         return {"code": 500, "message": "infer failed:{}".format(e)}
+    except Exception as e:
+        return {"code": 500, "message": "infer failed:{}".format(e)}
 
 @app.delete("/delete_model", response_model=ResponseModel)
 def delete_model(request: CancelJobByModelRequest):
@@ -377,21 +532,21 @@ if __name__ == "__main__":
     client = TestClient(app)
     request_model = RequestModel(
         model=Model(
-            path="/mnt/afs/user/wuxianye/share_data/vit6b_qwen2_5_72b_stage3_v8.2_stage4_dpo_20241205/",
-            model_name="test_1225v2",
+            path="/mnt/afs/user/zhengzhimeng/models/vit0.3b_qwen2_5_14b_stage3_v6.9.3.5_20241219_v1/",
+            model_name="test_0113v7",
             default_system_prompt="",
             config={
                 "vision": VisionConfig(
-                    model_type="vit_6b",
+                    model_type="vit_0.3b",
                     dynamic_preprcrocess_version="v3",
                     max_patch_num=12,
                     use_thumbnail=True,
                     image_token_num=256,
                 ),
-                "llm": LLMConfig(model_type="qwen2.5_72b"),
+                "llm": LLMConfig(model_type="qwen2.5_14b"),
             },
         ),
-        system=SystemModel(cluster="public", pool="foundation"),
+        system=SystemModel(cluster="m", pool="AMP"),
         sampling=SamplingModel(
             temperature=0.5,
             top_k=20,

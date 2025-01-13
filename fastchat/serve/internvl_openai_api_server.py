@@ -34,7 +34,7 @@ from fastchat.constants import (
 )
 from fastchat.conversation import Conversation, SeparatorStyle
 from fastchat.protocol.openai_api_protocol import (
-    ChatCompletionRequest,
+    
     ChatCompletionResponse,
     ChatCompletionResponseStreamChoice,
     ChatCompletionStreamResponse,
@@ -70,6 +70,27 @@ conv_template_map = {}
 
 fetch_timeout = aiohttp.ClientTimeout(total=3 * 3600)
 
+from pydantic import BaseModel
+class ChatCompletionRequest(BaseModel):
+    model: str
+    messages: Union[
+        str,
+        List[Dict[str, str]],
+        List[Dict[str, Union[str, List[Dict[str, Union[str, Dict[str, str]]]]]]],
+    ]
+    temperature: Optional[float] = 0.5
+    top_p: Optional[float] = 0.25
+    top_k: Optional[int] = 20
+    n: Optional[int] = 1
+    max_tokens: Optional[int] = None
+    stop: Optional[Union[str, List[str]]] = None
+    stream: Optional[bool] = False
+    presence_penalty: Optional[float] = 0.0
+    frequency_penalty: Optional[float] = 1.05
+    repetition_penalty: Optional[float] = 1.0
+    do_sample: Optional[bool] = True
+    user: Optional[str] = None
+    #TODO
 
 import numpy as np
 import cv2
@@ -401,6 +422,7 @@ async def get_gen_params(
     logprobs: Optional[int] = None,
     stop: Optional[Union[str, List[str]]],
     special_token: Optional[dict] = None,
+    do_sample: Optional[bool] = True,
 ) -> Dict[str, Any]:
     
     conv = await get_conv(model_name, worker_addr)
@@ -417,7 +439,10 @@ async def get_gen_params(
         stop_str=conv["stop_str"],
         stop_token_ids=conv["stop_token_ids"],
     )
-    
+    images_list = []
+    audios_list = []
+    image_list = None
+    audio_list = None
     if isinstance(messages, str):
         prompt = messages
         images = []
@@ -448,9 +473,6 @@ async def get_gen_params(
                         for item in message["content"]
                         if item["type"] == "audio_url"
                     ]
-                    # TODO audio、video
-                    # TODO： 拼special token
-                    # TODO(chris): This only applies to LLaVA model. Implement an image_token string in the conv template.
                     text = ""
                     if video_list:
                         for video_url in video_list:
@@ -467,9 +489,12 @@ async def get_gen_params(
                         text += special_token['img'] * len(image_list)
                     if audio_list:
                         text += special_token['audio'] * len(audio_list)
-
+                    
+                    images_list.extend(image_list) if image_list else []
+                    audios_list.extend(audio_list) if audio_list else []
                     text += "\n".join(text_list)
                     conv.append_message(conv.roles[0], (text, []))
+                    
                 else:
                     conv.append_message(conv.roles[0], message["content"])
             elif msg_role == "assistant":
@@ -480,8 +505,8 @@ async def get_gen_params(
         # Add a blank message for the assistant.
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
-        images = image_list
-        audios = audio_list
+    images = images_list if images_list else None
+    audios = audios_list if audios_list else None
 
     gen_params = {
         "model": model_name,
@@ -492,11 +517,12 @@ async def get_gen_params(
         "top_k": top_k,
         "repetition_penalty": repetition_penalty,
         "max_new_tokens": max_tokens,
+        "do_sample": do_sample,
     }
 
-    if len(images) > 0:
+    if images and len(images) > 0:
         gen_params["images"] = images
-    if len(audios) > 0:
+    if audios and len(audios) > 0:
         gen_params["audios"] = audios
 
 

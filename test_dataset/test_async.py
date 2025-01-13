@@ -40,51 +40,107 @@ def test_list_models():
     names = [x.id for x in model_list.data]
     return names
 
-async def process_entry(session, model, system_prompt, parameters,entry):
-    question = entry.get("question", "")
-    content_list = [{"type": "text", "text": question}]
+async def worker(semaphore, task_queue, session, model_name, system_prompt, parameters, processed_results):
+    while True:
+        line = await task_queue.get()
+        async with semaphore:
+            processed_data = await process_entry(session, model_name, system_prompt, parameters, line)
+            if processed_data:
+                processed_results.append(processed_data)
+        task_queue.task_done()
 
-    for img in entry.get("imgs", []):
-        oss_key = img.get("oss_key", "")
-        image_b64 = encode_image(oss_key)
-        if image_b64:
-            content_list.append({"type": "image_url", "image_url": {"url": image_b64}})
-    messages = [
-        {
-            "role": "user",
-            "content": content_list,
-        }
-    ]
-    if system_prompt:
-        messages = [
+async def process_entry(session, model, system_prompt, parameters, line):
+    history = []
+    for entry in line:
+        question = entry.get("question", "")
+        content_list = [{"type": "text", "text": question}]
+
+        for img in entry.get("imgs", []):
+            oss_key = img.get("oss_key", "")
+            image_b64 = encode_image(oss_key)
+            if image_b64:
+                content_list.append({"type": "image_url", "image_url": {"url": image_b64}})
+        messages = history + [
             {
-                "role": "system",
-                "content": system_prompt,
+                "role": "user",
+                "content": content_list,
             }
-        ] + messages
+        ]
+        if system_prompt:
+            messages = [
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                }
+            ] + messages
 
-    payload = {
-            "model": model, 
-            "messages": messages, 
-            "temperature": parameters["temperature"],
-            "top_p": parameters["top_p"],
-            "top_k": parameters["top_k"],
-            "repetition_penalty": parameters["repetition_penalty"],
-            "max_tokens": parameters["max_tokens"],
-            "do_sample": parameters["do_sample"],
-            "stop_sequences": parameters["stop_sequences"],
-            "skip_special_tokens": parameters["skip_special_tokens"],
-            }
-    async with session.post(openai.base_url + f"chat/completions", json=payload) as response:
-        result = await response.json()
+        payload = {
+                "model": model, 
+                "messages": messages, 
+                "temperature": parameters["temperature"],
+                "top_p": parameters["top_p"],
+                "top_k": parameters["top_k"],
+                "repetition_penalty": parameters["repetition_penalty"],
+                "max_tokens": parameters["max_tokens"],
+                "do_sample": parameters["do_sample"],
+                "stop_sequences": parameters["stop_sequences"],
+                "skip_special_tokens": parameters["skip_special_tokens"],
+                }
 
-    answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        test = debug_message(messages)
+        async with session.post(openai.base_url + f"chat/completions", json=payload) as response:
+            result = await response.json()
 
-    entry["result"] = {
-        "answer": answer,
-        "system_prompt": system_prompt,
-    }
-    return entry
+        answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        print(answer)
+        entry["result"] = {
+            "answer": answer,
+            "system_prompt": system_prompt,
+        }
+
+        if len(line) > 1:
+            history.append(
+                {
+                    "role": "user",
+                    "content": content_list,
+                }
+            )
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": answer,
+                }
+            )
+    
+    return line
+
+# from typing import List, Any, Union, Literal
+# from pydantic import BaseModel
+# class Message(BaseModel):
+#     role: Literal["user", "assistant", "system"]
+#     content: Union[str, List[Any]]
+
+def debug_message(messages, max_length=20, shift=26):
+    import copy
+
+    print_message = copy.deepcopy(messages)
+    for message in print_message:
+
+        if message["role"] != "user" or isinstance(message["content"], str):
+            continue
+        for cpart in message["content"]:
+            cpart_type = cpart["type"]
+            if "url" in cpart_type:
+                cpart[cpart_type]["url"] = cpart[cpart_type]["url"][
+                    shift : shift + max_length
+                ]
+            elif "audio" == cpart_type:
+                cpart[cpart_type]["url"] = cpart[cpart_type]["url"][
+                    shift : shift + max_length
+                ]
+    return json.dumps(
+        [msg for msg in print_message], ensure_ascii=False
+    )
 
 
 async def main(dataset_id: str, output_file: str, system_prompt: str ,parameters: dict, model_id: int,max_concurrent_tasks: int=10):
@@ -98,22 +154,31 @@ async def main(dataset_id: str, output_file: str, system_prompt: str ,parameters
         exit()
     model_name = test_list_models()[0]
     print(data)
+    
+    with open("/mnt/afs/user/zhengzhimeng/FastChat/test_dataset/data.json", mode="w") as f_out:
+        f_out.write(json.dumps(data, ensure_ascii=False, indent=4))
     try:
         semaphore = asyncio.Semaphore(max_concurrent_tasks)
+        task_queue: asyncio.Queue[str] = asyncio.Queue()
+        for group in data:
+            task_queue.put_nowait(group)
+        processed_results = []
+
         async with aiohttp.ClientSession() as session:
             tasks = []
-            for group in data:
-                group_tasks = []
-                for entry in group:
-                    async with semaphore:
-                        group_tasks.append(process_entry(session, model_name, system_prompt, parameters,entry))
-                tasks.append(asyncio.gather(*group_tasks))
-            processed_groups = await asyncio.gather(*tasks)
-
-            async with aiofiles.open(output_file, mode="w") as f_out:
-                await f_out.write(json.dumps(processed_groups, ensure_ascii=False, indent=4))
-            logger.info(f"Processed data saved to {output_file}")
-        
+            for _ in range(max_concurrent_tasks):
+                task = asyncio.create_task(
+                worker(semaphore, task_queue, session, model_name, system_prompt, parameters, processed_results)
+            )
+                tasks.append(task)
+            await task_queue.join()
+            for task in tasks:
+                task.cancel()
+        async with aiofiles.open(output_file, mode="w") as f_out:
+            # wrapped_results = [[item] for item in processed_results]
+            await f_out.write(json.dumps(processed_results, ensure_ascii=False, indent=4))
+          
+        logger.info(f"Processed data saved to {output_file}")
         url = f"{system_url}/upload_result_to_model"
         payload = {'model_id': model_id}
         files=[
